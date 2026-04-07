@@ -1,0 +1,99 @@
+{
+  "name": "Fraud Alert Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fraud-alert",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Fraud Alert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "fraud-alert"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.severity }}",
+              "operation": "equals",
+              "value2": "high"
+            }
+          ]
+        }
+      },
+      "id": "route-severity",
+      "name": "Route by Severity",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst score = (body.fraud_score * 100).toFixed(1);\nconst reasons = Array.isArray(body.reasons) ? body.reasons.join(', ') : body.reasons;\n\nreturn [{\n  json: {\n    subject: `[FRAUD ALERT] ${body.severity.toUpperCase()} — Score ${score}% — User ${body.user_id}`,\n    message: [\n      `A ${body.severity} fraud alert has been triggered.`,\n      ``,\n      `Transaction ID : ${body.transaction_id}`,\n      `User           : ${body.user_id}`,\n      `Merchant       : ${body.merchant_id || 'N/A'}`,\n      `Amount         : ${body.currency} ${body.amount}`,\n      `Fraud Score    : ${score}%`,\n      `Decision       : ${body.decision.toUpperCase()}`,\n      `Reasons        : ${reasons}`,\n      `Country        : ${body.country || 'N/A'}`,\n      ``,\n      `View details   : ${body.dashboard_url}`,\n    ].join('\\n'),\n    severity: body.severity,\n    transaction_id: body.transaction_id,\n    fraud_score: body.fraud_score,\n    user_id: body.user_id,\n    decision: body.decision\n  }\n}];"
+      },
+      "id": "format-alert",
+      "name": "Format Alert Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nreturn [{\n  json: {\n    event_type: 'fraud_alert',\n    transaction_id: body.transaction_id,\n    user_id: body.user_id,\n    fraud_score: body.fraud_score,\n    severity: body.severity,\n    decision: body.decision,\n    reasons: body.reasons,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "log-event",
+      "name": "Log Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 420]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"received\", \"transaction_id\": \"{{ $('Fraud Alert Webhook').first().json.body.transaction_id }}\" }"
+      },
+      "id": "respond-ok",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Fraud Alert Webhook": {
+      "main": [
+        [{ "node": "Route by Severity", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route by Severity": {
+      "main": [
+        [{ "node": "Format Alert Message", "type": "main", "index": 0 }],
+        [{ "node": "Log Event", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Alert Message": {
+      "main": [
+        [{ "node": "Respond 200 OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "Log Event": {
+      "main": [
+        [{ "node": "Respond 200 OK", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["fraud-detection", "mvp"],
+  "meta": {
+    "instanceId": "fraud-detection-mvp"
+  }
+}

@@ -1,0 +1,222 @@
+{
+  "name": "Fraud Detection MCP Server",
+  "nodes": [
+    {
+      "id": "mcp_trigger",
+      "name": "MCP Server Trigger",
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ],
+      "webhookId": "39ab9854-1708-43ee-a89a-4b15ae028839",
+      "parameters": {
+        "path": "mcp-server",
+        "authentication": "none"
+      }
+    },
+    {
+      "id": "tool_score",
+      "name": "score_transaction",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        160
+      ],
+      "parameters": {
+        "name": "score_transaction",
+        "description": "Analyzes a financial transaction and returns a fraud score (0-1), decision (approve/review/block), severity, and risk reasons. Use this to check if a transaction is fraudulent before processing it.",
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/api/v1/transactions/score",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $fromAI('user_id', 'The user or account ID making the transaction') }}"
+            },
+            {
+              "name": "amount",
+              "value": "={{ $fromAI('amount', 'Transaction amount in numeric value') }}"
+            },
+            {
+              "name": "currency",
+              "value": "={{ $fromAI('currency', 'Currency code e.g. USD, EUR', 'USD') }}"
+            },
+            {
+              "name": "merchant_id",
+              "value": "={{ $fromAI('merchant_id', 'Merchant or store identifier', '') }}"
+            },
+            {
+              "name": "merchant_category",
+              "value": "={{ $fromAI('merchant_category', 'Category: retail, cryptocurrency, gambling, money_transfer, etc', '') }}"
+            },
+            {
+              "name": "country",
+              "value": "={{ $fromAI('country', '2-4 letter country code e.g. US, MX, NG', '') }}"
+            },
+            {
+              "name": "channel",
+              "value": "={{ $fromAI('channel', 'Channel: web, mobile, pos, atm', 'web') }}"
+            },
+            {
+              "name": "device_fingerprint",
+              "value": "={{ $fromAI('device_fingerprint', 'Unique device identifier if available', '') }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "tool_alerts",
+      "name": "get_fraud_alerts",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        500,
+        160
+      ],
+      "parameters": {
+        "name": "get_fraud_alerts",
+        "description": "Retrieves fraud alerts from the system. Can filter by user, severity level, and resolution status. Returns a list of alerts with fraud scores and details.",
+        "method": "GET",
+        "url": "=http://host.docker.internal:8000/api/v1/alerts/?limit={{ $fromAI('limit', 'Max number of alerts to return', '20') }}&resolved={{ $fromAI('resolved', 'Filter by resolved status: true or false', 'false') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "tool_transactions",
+      "name": "list_transactions",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        160
+      ],
+      "parameters": {
+        "name": "list_transactions",
+        "description": "Lists recent transactions. Can filter by user_id and status (approved, review, blocked). Returns transaction IDs, amounts, fraud scores and decisions.",
+        "method": "GET",
+        "url": "=http://host.docker.internal:8000/api/v1/transactions/?limit={{ $fromAI('limit', 'Max results', '20') }}&status={{ $fromAI('status', 'Filter by status: approved, review, blocked, or empty for all', '') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "tool_resolve",
+      "name": "resolve_alert",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1020,
+        160
+      ],
+      "parameters": {
+        "name": "resolve_alert",
+        "description": "Resolves or dismisses a fraud alert after investigation. Marks the alert as reviewed with a resolution note.",
+        "method": "PATCH",
+        "url": "=http://host.docker.internal:8000/api/v1/alerts/{{ $fromAI('alert_id', 'The UUID of the fraud alert to resolve') }}/resolve",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "resolved_by",
+              "value": "={{ $fromAI('resolved_by', 'Name or ID of the analyst resolving the alert') }}"
+            },
+            {
+              "name": "resolution_note",
+              "value": "={{ $fromAI('resolution_note', 'Explanation of why the alert was resolved', '') }}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "score_transaction": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_fraud_alerts": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "list_transactions": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "resolve_alert": {
+      "ai_tool": [
+        [
+          {
+            "node": "MCP Server Trigger",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
